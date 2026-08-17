@@ -1,9 +1,10 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, DeleteDateColumn } from 'typeorm';
 import { Decimal } from 'decimal.js';
+import { DecimalTransformer } from '../../shared/decimalTransformer';
 
 /**
  * Transaction Entity - Represents a financial transaction
- * 
+ *
  * Implements:
  * - Decimal precision for financial amounts (no float rounding errors)
  * - Soft deletes for audit trail preservation
@@ -37,11 +38,10 @@ export class Transaction {
   description: string;
 
   /**
-   * Transaction amount in cents/smallest currency unit
-   * Uses Decimal type for exact precision (no float rounding)
-   * Constraint: Must be positive (validated at service layer)
+   * Transaction amount in currency units (decimal)
+   * Stored with DecimalTransformer to ensure Decimal.js instances round-trip correctly
    */
-  @Column('decimal', { precision: 19, scale: 2 })
+  @Column('decimal', { precision: 19, scale: 2, transformer: DecimalTransformer })
   amount: Decimal;
 
   /**
@@ -74,9 +74,6 @@ export class Transaction {
 
   /**
    * Soft delete timestamp
-   * When set (not null), transaction is logically deleted but recoverable
-   * Audit trail preserved; query filters exclude soft-deleted records
-   * Required for fintech compliance (7-year retention)
    */
   @DeleteDateColumn()
   deletedAt: Date | null;
