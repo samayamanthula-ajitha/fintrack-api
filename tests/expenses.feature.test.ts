@@ -71,9 +71,96 @@ describe('Expense feature tests (missing cases)', () => {
       totalAmount,
       SplitType.EQUAL,
       participantIds,
+      expect.any(Array),
       undefined,
       undefined,
     );
+  });
+
+  it('custom split with amounts that match the total should succeed', async () => {
+    const creatorId = '550e8400-e29b-41d4-a716-446655440000';
+    const user2 = '660e8400-e29b-41d4-a716-446655440001';
+    const participantIds = [creatorId, user2];
+    const totalAmount = new Decimal('100.00');
+
+    const customAmounts = {
+      [creatorId]: new Decimal('40.00'),
+      [user2]: new Decimal('60.00'),
+    };
+
+    const mockExpense: SharedExpense = {
+      id: 'e2',
+      creatorId,
+      description: 'Custom Dinner',
+      totalAmount,
+      splitType: SplitType.CUSTOM,
+      category: null,
+      expenseDate: null,
+      isSettled: false,
+      participants: participantIds.map((u, i) => ({
+        id: `pc${i + 1}`,
+        expenseId: 'e2',
+        userId: u,
+        amount: customAmounts[u],
+        amountPaid: new Decimal(0),
+        isPaid: false,
+        expense: null as any,
+        createdAt: new Date(),
+      })),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+    };
+
+    mockRepository.createExpense.mockResolvedValue(mockExpense);
+
+    const result = await service.createExpense(creatorId, {
+      description: 'Custom Dinner',
+      totalAmount,
+      participantIds,
+      splitType: SplitType.CUSTOM,
+      customAmounts,
+    } as any);
+
+    expect(result).toEqual(mockExpense);
+    // Expect repository called with participantShares matching custom amounts
+    expect(mockRepository.createExpense).toHaveBeenCalledWith(
+      creatorId,
+      'Custom Dinner',
+      totalAmount,
+      SplitType.CUSTOM,
+      participantIds,
+      [
+        { userId: creatorId, amount: customAmounts[creatorId] },
+        { userId: user2, amount: customAmounts[user2] },
+      ],
+      undefined,
+      undefined,
+    );
+  });
+
+  it('custom split where amounts do not sum correctly should fail validation', async () => {
+    const creatorId = '550e8400-e29b-41d4-a716-446655440000';
+    const user2 = '660e8400-e29b-41d4-a716-446655440001';
+    const participantIds = [creatorId, user2];
+    const totalAmount = new Decimal('100.00');
+
+    const badCustomAmounts = {
+      [creatorId]: new Decimal('30.00'),
+      [user2]: new Decimal('40.00'),
+    };
+
+    await expect(
+      service.createExpense(creatorId, {
+        description: 'Bad Custom',
+        totalAmount,
+        participantIds,
+        splitType: SplitType.CUSTOM,
+        customAmounts: badCustomAmounts,
+      } as any),
+    ).rejects.toThrow(ValidationError);
+
+    expect(mockRepository.createExpense).not.toHaveBeenCalled();
   });
 
   it('net balance calculation between two users with multiple shared expenses', async () => {
@@ -122,29 +209,6 @@ describe('Expense feature tests (missing cases)', () => {
 
     const balance = await service.calculateBalance(userA, userB);
 
-    // Calculation used by service:
-    // expense1: A paid => B owes userB.participant.amount (15) - paid (0) => +15
-    // expense2: B paid => A owes => minus userA.participant.amount (10) + paid (0) => -10
-    // Net: 15 - 10 = 5 => positive means userA owes userB? (service returns positive = user1 owes user2)
-    // From the service's comment: Positive = user1 owes user2. Given service logic, this should be:
-    // For expense1 (creator A): balance += userB.amount - userB.amountPaid => +15
-    // For expense2 (creator B): balance -= userA.amount - userA.amountPaid => -10
-    // Net = +5
     expect(balance.toFixed(2)).toBe(new Decimal(5).toFixed(2));
-  });
-
-  // The codebase currently lacks a clear representation for custom split amounts per participant
-  // and validation that custom amounts sum to the total. The two tests below are LEFT AS SKIPPED
-  // TODO: Implement custom split handling (participant amounts in the DTO) then enable these tests.
-
-  it.skip('custom split with amounts that match the total should succeed (TO DO)', async () => {
-    // Placeholder for when custom-split support is added:
-    // - Pass an array of participant objects with amounts that sum to totalAmount
-    // - Expect createExpense to succeed and per-participant amounts to match
-  });
-
-  it.skip('custom split where amounts do not sum to total should fail validation (TO DO)', async () => {
-    // Placeholder for validation test when custom-split support is added
-    // - Expect service.createExpense to throw ValidationError
   });
 });
